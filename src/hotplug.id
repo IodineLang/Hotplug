@@ -1,0 +1,104 @@
+use io;
+use configfile;
+use reflection;
+
+interface IPlugin {
+    func activate (args);
+    func deactivate (args);
+}
+
+
+class PluginManager {
+    class Plugin {
+        func Plugin (module, className) {
+            self.module = module
+            self.className = className;
+            self.activated = false;
+        }
+
+        func load (self) {
+            module = reflection.loadModule (self.module);
+            attributes = reflection.getAttributes (module);
+
+            if (!attributes.contains (self.className)) {
+                raise PluginLoadException ("Could not find class!");
+            } else {
+                self.pluginObject = attributes [self.className] ();
+            }
+        }
+
+        func activate (self, *args) {
+            if (!self.activated) {
+                self.pluginObject.activate (*args);
+                self.activated = true;
+            } else {
+                raise PluginLoadException ("Plugin already activated!");
+            }
+        }
+
+        func deactivate (self, *args) {
+            if (self.activated) {
+                self.pluginObject.deactivate (*args);
+                self.activated = false;
+            } else {
+                raise PluginLoadException ("Plugin not activated!");
+            }
+        }
+    }
+
+    func PluginManager (self) {
+        self.plugins = List ();
+        self.pluginDirs = List ();
+    }
+
+    func addDirectory (self, dir) {
+        self.pluginDirs.add (dir);
+    }
+
+    func activateAll (self, *args) {
+        foreach (plugin in self.plugins) {
+            plugin.activate (*args);
+        }
+    }
+
+    func deactivateAll (self, *args) {
+        foreach (plugin in self.plugins) {
+            plugin.deactivate (*args);
+        }
+    }
+
+    func collect (self, *args) {
+        foreach (dir in self.pluginDirs) {
+            foreach (file in io.Directory.getFiles (dir)) {
+                if (file.endsWith (".plugin")) {
+                    plugin = self._loadPlugin (file, dir);
+                    try {
+                        plugin.load ();
+                        self.plugins.add (plugin);
+                    } except (ex) {
+                        raise PluginLoadException ("Could not load {}".format (file));
+                    }
+                }
+            }
+        }
+    }
+
+    func _loadPlugin (self, configFile, dir) {
+        config = configfile.ConfigFile.open (configFile);
+        if (config.hasSection ("plugin")) {
+            pluginSec = config.sections ["plugin"];
+            name = pluginSec.get ("name");
+            version = pluginSec.get ("version", "v1.0.0");
+            author = pluginSec.get ("author", "Unknown");
+            module = io.File.join (dir, pluginSec.get ("module"));
+            className = pluginSec.get ("class");
+            return PluginManager.Plugin (module, className);
+        }
+    }
+}
+
+class PluginLoadException : Exception {
+    func PluginLoadException (self, message) {
+        super (message);
+    }
+}
