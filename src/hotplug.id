@@ -1,25 +1,35 @@
-use io;
+use os;
+use fsutils;
+use inspect;
 use configfile;
-use reflection;
 
-interface IPlugin {
+func _joinPaths (prefix, suffix) {
+    if (prefix.endswith ("/")) {
+        return prefix + suffix;
+    }
+    
+    return "#{prefix}/#{suffix}";
+}
+
+contract IPlugin {
     func activate (args);
     func deactivate (args);
 }
 
-
 class PluginManager {
     class Plugin {
-        func Plugin (module, className) {
+        func Plugin (self, module, className) {
             self.module = module
             self.className = className;
             self.activated = false;
         }
 
         func load (self) {
-            module = reflection.loadModule (self.module);
-            attributes = reflection.getAttributes (module);
+            module = loadmodule (self.module);
 
+            module (); # Initialize the module by invoking its initializer
+            attributes = inspect.getattributes (module);
+            
             if (!attributes.contains (self.className)) {
                 raise PluginLoadException ("Could not find class!");
             } else {
@@ -47,36 +57,36 @@ class PluginManager {
     }
 
     func PluginManager (self) {
-        self.plugins = List ();
-        self.pluginDirs = List ();
+        self.plugins = [];
+        self.pluginDirs = [];
     }
 
     func addDirectory (self, dir) {
-        self.pluginDirs.add (dir);
+        self.pluginDirs.append (dir);
     }
 
     func activateAll (self, *args) {
-        foreach (plugin in self.plugins) {
+        for (plugin in self.plugins) {
             plugin.activate (*args);
         }
     }
 
     func deactivateAll (self, *args) {
-        foreach (plugin in self.plugins) {
+        for (plugin in self.plugins) {
             plugin.deactivate (*args);
         }
     }
 
     func collect (self, *args) {
-        foreach (dir in self.pluginDirs) {
-            foreach (file in io.Directory.getFiles (dir)) {
-                if (file.endsWith (".plugin")) {
+        for (dir in self.pluginDirs) {
+            for (file in os.list (dir)) {
+                if (fsutils.isfile (file) && file.endswith (".plugin")) {
                     plugin = self._loadPlugin (file, dir);
                     try {
                         plugin.load ();
-                        self.plugins.add (plugin);
+                        self.plugins.append (plugin);
                     } except (ex) {
-                        raise PluginLoadException ("Could not load {}".format (file));
+                        raise PluginLoadException ("Could not load #{file}");
                     }
                 }
             }
@@ -85,19 +95,19 @@ class PluginManager {
 
     func _loadPlugin (self, configFile, dir) {
         config = configfile.ConfigFile.open (configFile);
-        if (config.hasSection ("plugin")) {
+        if (config.hassection ("plugin")) {
             pluginSec = config.sections ["plugin"];
             name = pluginSec.get ("name");
             version = pluginSec.get ("version", "v1.0.0");
             author = pluginSec.get ("author", "Unknown");
-            module = io.File.join (dir, pluginSec.get ("module"));
+            module = _joinPaths (dir, pluginSec.get ("module"));
             className = pluginSec.get ("class");
             return PluginManager.Plugin (module, className);
         }
     }
 }
 
-class PluginLoadException : Exception {
+class PluginLoadException extends Exception {
     func PluginLoadException (self, message) {
         super (message);
     }
