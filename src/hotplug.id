@@ -18,16 +18,26 @@ contract IPlugin {
 
 class PluginManager {
     class Plugin {
-        func Plugin (self, module, className) {
-            self.module = module
+        func Plugin (self, modulePath, name, className) {
+            self.modulePath = modulePath
+            self.name = name
             self.className = className;
             self.activated = false;
         }
 
         func load (self) {
-            module = loadmodule (self.module);
+            self.module = loadmodule (self.modulePath);
+            self._doLoad (self.module);
+        }
 
+        func reload (self) {
+            self.module = reload (self.module);
+            self._doLoad (self.module);
+        }
+
+        func _doLoad (self, module) {
             module (); # Initialize the module by invoking its initializer
+
             attributes = inspect.getattributes (module);
             
             if (!attributes.contains (self.className)) {
@@ -71,6 +81,30 @@ class PluginManager {
         }
     }
 
+    func activate (self, name, *args) {
+        for (plugin in self.plugins) {
+            if (plugin.name == name) {
+                plugin.activate (*args)
+            }
+        }
+    }
+
+    func deactivate (self, name, *args) {
+        for (plugin in self.plugins) {
+            if (plugin.name == name) {
+                plugin.deactivate (*args)
+            }
+        }
+    }
+
+    func reload (self, name, *args) {
+        for (plugin in self.plugins) {
+            if (plugin.name == name) {
+                plugin.reload ()
+            }
+        }
+    }
+
     func deactivateAll (self, *args) {
         for (plugin in self.plugins) {
             plugin.deactivate (*args);
@@ -102,7 +136,7 @@ class PluginManager {
             author = pluginSec.get ("author", "Unknown");
             module = _joinPaths (dir, pluginSec.get ("module"));
             className = pluginSec.get ("class");
-            return PluginManager.Plugin (module, className);
+            return PluginManager.Plugin (module, name, className);
         }
     }
 }
